@@ -11,10 +11,30 @@ from datetime import datetime, timedelta
 # src/ ディレクトリをモジュール検索パスに追加する（タスクスケジューラから実行される場合にも対応）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config.params import FETCH_DAYS, MA_DAYS, BUY_THRESHOLD
+from config.params import FETCH_DAYS
 from config.paths import LOG_DIR, OUTPUT_DIR
 from config.symbols import SYMBOLS
 from fetcher import fetch_all
+
+# Phase 2 切替: analyzer.py / notifier.py が存在すれば自動的に本実装を使用する
+# 存在しない場合はスタブ関数にフォールバックする（main() 本体の変更は不要）
+try:
+    from analyzer import analyze_all
+    from notifier import send_discord
+except ImportError:
+    # Phase 2 未実装時のフォールバック関数
+    def analyze_all(fetch_results: list) -> list:
+        """シグナル判定処理のスタブ関数（Phase 2で analyzer.py に置き換わる）。"""
+        logging.getLogger("stock_checker").info(
+            "analyze_all() は Phase 2 で実装予定です。スキップします。"
+        )
+        return []
+
+    def send_discord(signal_results: list) -> None:
+        """Discord通知処理のスタブ関数（Phase 2で notifier.py に置き換わる）。"""
+        logging.getLogger("stock_checker").info(
+            "send_discord() は Phase 2 で実装予定です。スキップします。"
+        )
 
 
 # ========================================
@@ -38,9 +58,15 @@ def _setup_logger() -> logging.Logger:
     today_str = datetime.now().strftime("%Y%m%d")
     log_file = os.path.join(LOG_DIR, f"app_{today_str}.log")
 
-    # ロガーを設定する
-    logger = logging.getLogger()
+    # アプリケーション専用のロガーを設定する（ルートロガーは使用しない）
+    # ルートロガーを使うと yfinance・urllib3 などのライブラリログが混入するため
+    logger = logging.getLogger("stock_checker")
     logger.setLevel(logging.INFO)
+
+    # 外部ライブラリのログレベルを WARNING に抑制する（ログファイルのノイズ防止）
+    logging.getLogger("yfinance").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("peewee").setLevel(logging.WARNING)
 
     # フォーマットを定義する
     formatter = logging.Formatter(
@@ -101,40 +127,6 @@ def _cleanup_old_logs(logger: logging.Logger) -> None:
 
 
 # ========================================
-# Phase 2 スタブ関数（未実装）
-# ========================================
-
-def _analyze_all_stub(fetch_results: list) -> list:
-    """
-    シグナル判定処理のスタブ関数（Phase 2で実装予定）。
-
-    Phase 2 実装時には analyzer.analyze_all() に置き換える。
-
-    Args:
-        fetch_results (list): fetch_all() の戻り値
-
-    Returns:
-        list: 空リスト（Phase 2 実装前のスタブ）
-    """
-    logger = logging.getLogger(__name__)
-    logger.info("analyze_all() は Phase 2 で実装予定です。スキップします。")
-    return []
-
-
-def _send_discord_stub(signal_results: list) -> None:
-    """
-    Discord通知処理のスタブ関数（Phase 2で実装予定）。
-
-    Phase 2 実装時には notifier.send_discord() に置き換える。
-
-    Args:
-        signal_results (list): analyze_all() の戻り値
-    """
-    logger = logging.getLogger(__name__)
-    logger.info("send_discord() は Phase 2 で実装予定です。スキップします。")
-
-
-# ========================================
 # メイン処理
 # ========================================
 
@@ -155,8 +147,6 @@ def main() -> None:
     logger.info("株価チェッカーを起動しました。")
     logger.info(f"  対象銘柄数: {len(SYMBOLS)}")
     logger.info(f"  取得日数  : {FETCH_DAYS} 日")
-    logger.info(f"  移動平均  : {MA_DAYS} 日")
-    logger.info(f"  買い閾値  : {BUY_THRESHOLD * 100:.1f} %")
 
     # 30日以前の古いログファイルを自動削除する
     _cleanup_old_logs(logger)
@@ -172,16 +162,23 @@ def main() -> None:
     except Exception as e:
         logger.error(f"fetch_all() で予期しないエラーが発生しました: {e}", exc_info=True)
 
-    # ③ シグナル判定・結果CSV保存（Phase 2 で実装予定）
+    # ③ シグナル判定・結果CSV保存（Phase 2: analyzer.py が存在すれば自動で本実装が使われる）
     signal_results = []
+    analyze_succeeded = False
     try:
-        signal_results = _analyze_all_stub(fetch_results)
+        signal_results = analyze_all(fetch_results)
+        analyze_succeeded = True
+        logger.info(f"analyze_all() 完了: {len(signal_results)} 件のシグナルを検出しました。")
     except Exception as e:
         logger.error(f"analyze_all() で予期しないエラーが発生しました: {e}", exc_info=True)
 
-    # ④ Discord通知（Phase 2 で実装予定）
+    # analyze_all() が失敗した場合でも send_discord() は呼び出す（「対象なし」として通知するため）
+    if not analyze_succeeded:
+        logger.warning("analyze_all() が失敗したため、シグナルなしとして Discord 通知を続行します。")
+
+    # ④ Discord通知（Phase 2: notifier.py が存在すれば自動で本実装が使われる）
     try:
-        _send_discord_stub(signal_results)
+        send_discord(signal_results)
     except Exception as e:
         logger.error(f"send_discord() で予期しないエラーが発生しました: {e}", exc_info=True)
 

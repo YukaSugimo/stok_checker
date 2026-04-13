@@ -100,22 +100,38 @@ def fetch_stock(symbol: str, days: int) -> pd.DataFrame:
         )
 
         # データが空の場合はエラーとして扱う
-        if df is None or df.empty:
-            logger.error(f"[{symbol}] 取得したデータが空です。銘柄コードが正しいか確認してください。")
+        # yfinance は取得失敗時に None ではなく空の DataFrame を返す
+        if df.empty:
+            logger.error(
+                f"[{symbol}] 取得データが空です。"
+                f"銘柄コード誤りまたは取得期間"
+                f"({start_date.strftime('%Y-%m-%d')}〜{end_date.strftime('%Y-%m-%d')})"
+                f"に取引日がない可能性があります。"
+            )
             return None
 
         # カラム名を小文字に統一する
         df.columns = [col.lower() for col in df.columns]
 
         # インデックス（日付）をリセットして date 列にする
+        # yfinance はタイムゾーン付き DatetimeIndex を返すため、reset_index() 後は "Date" 列になる
         df = df.reset_index()
-        df = df.rename(columns={"index": "date", "Date": "date"})
+        df = df.rename(columns={"Date": "date"})
 
-        # date 列をYYYY-MM-DD形式の文字列に変換する
+        # date 列をYYYY-MM-DD形式の文字列に変換する（タイムゾーン情報は意図的に除去）
         df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
 
-        # 必要な列だけを抽出し、symbol 列を追加する
+        # 必要な列が存在するか確認する（yfinance のAPI変更を検知するため）
         required_columns = ["date", "open", "high", "low", "close", "volume"]
+        missing = [col for col in required_columns if col not in df.columns]
+        if missing:
+            logger.error(
+                f"[{symbol}] 期待する列が存在しません: {missing}。"
+                f"実際の列: {list(df.columns)}。yfinance のバージョン変更を確認してください。"
+            )
+            return None
+
+        # 必要な列だけを抽出し、symbol 列を追加する
         df = df[required_columns].copy()
         df["symbol"] = symbol
 
@@ -154,7 +170,14 @@ def save_csv(df: pd.DataFrame, symbol: str) -> str:
         filename = f"stock_{today_str}_{symbol}.csv"
         file_path = os.path.join(OUTPUT_DIR, filename)
 
+        # 同日分のCSVが既に存在する場合は警告する（スケジューラの二重実行を検知するため）
+        if os.path.exists(file_path):
+            logger.warning(f"[{symbol}] 本日分のCSVが既に存在します。上書きします: {file_path}")
+
         # CSVとして保存する（インデックスなし、列順序は設計書に準拠）
+        # エンコーディング: utf-8-sig（BOM付きUTF-8）でExcel互換性を確保する
+        # 注意: analyzer.py の load_csv() でも encoding='utf-8-sig' を指定すること。
+        #       指定しない場合、先頭列名が '\ufeffdate' になり列選択が失敗する。
         columns_order = ["date", "open", "high", "low", "close", "volume", "symbol"]
         df[columns_order].to_csv(file_path, index=False, encoding="utf-8-sig")
 

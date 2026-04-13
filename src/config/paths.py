@@ -6,8 +6,9 @@
 import os
 
 # このファイル（paths.py）が置かれているディレクトリを基準に絶対パスを構築する
-# src/config/paths.py → 3階層上がりプロジェクトルート（stock-checker/）を取得する
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# src/config/paths.py → src/ → プロジェクトルート（stock-checker/）の順に2階層上がる
+_SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # src/
+_BASE_DIR = os.path.dirname(_SRC_DIR)  # プロジェクトルート
 
 # CSV出力先フォルダのパス（自動生成・Gitに含めない）
 OUTPUT_DIR = os.path.join(_BASE_DIR, "output")
