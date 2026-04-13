@@ -1,6 +1,19 @@
-﻿.env
+﻿# 秘密情報ファイル（絶対にコミットしない）
+.env
+
+# CSV出力先フォルダ（自動生成・Gitに含めない）
 output/
+src/output/
+
+# ログ出力先フォルダ（自動生成・Gitに含めない）
 logs/
+src/logs/
+
+# Pythonキャッシュファイル
 __pycache__/
 *.pyc
+*.pyo
+
+# IDEの設定ファイル
 .vscode/
+.idea/
