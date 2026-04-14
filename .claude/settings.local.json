@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py:*)",
+      "Bash(python3:*)",
+      "Bash(python \"/c/Users/yuucy/OneDrive/デスクトップ/起業/claude_code/株自動売買ツール/doc/2.基本設計/read_xlsx.py\")",
+      "Bash(where python:*)"
+    ]
+  }
+}
