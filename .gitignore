@@ -1,6 +1,10 @@
 ﻿# 秘密情報ファイル（絶対にコミットしない）
 .env
 
+# ログファイル
+output_log.txt
+run_log.txt
+
 # CSV出力先フォルダ（自動生成・Gitに含めない）
 output/
 src/output/
